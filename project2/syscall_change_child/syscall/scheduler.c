@@ -1,0 +1,118 @@
+/*
+	this syscall chang all the children of zygote to RR
+	use the dfs to check for zygote 
+	and set its childern
+*/
+#include<linux/module.h>
+#include<linux/kernel.h>
+#include<linux/init.h>
+#include<linux/sched.h>
+#include<linux/unistd.h>
+#include<linux/uaccess.h>
+#include <linux/mm.h>
+#include <linux/module.h>
+#include <linux/nmi.h>
+#include <linux/init.h>
+#include <linux/uaccess.h>
+#include <linux/highmem.h>
+#include <asm/mmu_context.h>
+#include <linux/interrupt.h>
+#include <linux/capability.h>
+#include <linux/completion.h>
+#include <linux/kernel_stat.h>
+#include <linux/debug_locks.h>
+#include <linux/perf_event.h>
+#include <linux/security.h>
+#include <linux/notifier.h>
+#include <linux/profile.h>
+#include <linux/freezer.h>
+#include <linux/vmalloc.h>
+#include <linux/blkdev.h>
+#include <linux/delay.h>
+#include <linux/pid_namespace.h>
+#include <linux/smp.h>
+#include <linux/threads.h>
+#include <linux/timer.h>
+#include <linux/rcupdate.h>
+#include <linux/cpu.h>
+#include <linux/cpuset.h>
+#include <linux/percpu.h>
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+#include <linux/sysctl.h>
+#include <linux/syscalls.h>
+#include <linux/times.h>
+#include <linux/tsacct_kern.h>
+#include <linux/kprobes.h>
+#include <linux/delayacct.h>
+#include <linux/unistd.h>
+#include <linux/pagemap.h>
+#include <linux/hrtimer.h>
+#include <linux/tick.h>
+#include <linux/debugfs.h>
+#include <linux/ctype.h>
+#include <linux/ftrace.h>
+#include <linux/slab.h>
+#include <linux/init_task.h>
+#include <linux/binfmts.h>
+#include <asm/switch_to.h>
+#include <asm/tlb.h>
+#include <asm/irq_regs.h>
+#include <asm/mutex.h>
+#include <trace/events/sched.h>
+MODULE_LICENSE("Dual BSD/GPL");
+#define __NR_hellocall 356
+static int (*oldcall)(void);
+static int sys_hellocall(){
+	printk("1\n");
+	struct task_struct *task;                                       
+	task = current;							//pointer of the current process
+	while(task->pid!=0)task = task->parent;				//find all the process's father
+	struct list_head *list;						//
+	read_lock(&tasklist_lock);				        //lock the list of task_struck
+FUCK:        	
+	if(task->comm[0]=='m'&&task->comm[1]=='a'){
+		list_for_each(list,&task->children)                 	//when I find the current process to be zygote in dfs
+		{							//I LET the children to change here
+			struct sched_param parm;				
+			parm.sched_priority = 2;			//here to set priority ,this can be modify
+			sched_setscheduler(list_entry(list,struct task_struct,sibling), SCHED_RR,&parm);
+		}							//then change
+	}	
+	list_for_each(list,&task->children)                                  //search for the child
+	{	
+		task = list_entry(list,struct task_struct,sibling);
+                goto FUCK;
+	}
+NANI:
+	if(task->pid==0)goto HE;                                           //if all the search finish goto HE
+	if(task==list_entry((&(task->real_parent->children))->prev,struct task_struct,sibling))
+	{
+		task = task->parent;
+		goto NANI;
+	}
+	else 
+	{                                               
+		task = list_entry((&task->sibling)->next,struct task_struct,sibling);	
+		goto FUCK;                                                //use to go back;
+	}        
+HE:
+	read_unlock(&tasklist_lock);
+	return 0;	
+}
+static int addsyscall_init(void)
+{
+	long *syscall = (long*)0xc000d8c4;
+	oldcall = (int(*)(void))(syscall[__NR_hellocall]);
+	syscall[__NR_hellocall] = (unsigned long )sys_hellocall;
+	printk(KERN_INFO "module load!\n");
+	return 0;
+}
+static void addsyscall_exit(void)
+{
+	long *syscall = (long*)0xc000d8c4;
+	syscall[__NR_hellocall] = (unsigned long )oldcall;
+	printk(KERN_INFO "module exit!\n");
+}
+module_init(addsyscall_init);
+module_exit(addsyscall_exit);

@@ -1,0 +1,7 @@
+#include<stdio.h>
+int main(){
+	printf("set the descendants\n\n");
+	int j = syscall(356);
+	printf("over");
+	return 0;
+}
